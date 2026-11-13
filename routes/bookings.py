@@ -13,7 +13,16 @@ bookings_bp = Blueprint("bookings", __name__)
 EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 
 def encode_cursor(created_at, booking_id):
-    iso = format_iso(created_at)
+    """Encode cursor with full precision (microseconds) for correct pagination."""
+    if isinstance(created_at, datetime):
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        else:
+            created_at = created_at.astimezone(timezone.utc)
+        # Use isoformat() which preserves microseconds
+        iso = created_at.isoformat()
+    else:
+        iso = str(created_at)
     raw = f"{iso}|{booking_id}"
     return base64.urlsafe_b64encode(raw.encode("utf-8")).decode("utf-8")
 

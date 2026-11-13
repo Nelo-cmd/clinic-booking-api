@@ -162,7 +162,7 @@ class TestClinicApiLevels(unittest.TestCase):
         headers_with_idem = dict(self.headers)
         headers_with_idem["Idempotency-Key"] = "unique-key-123"
 
-        body1 = {"slot_id": "s1", "name": "Ada", "email": "ada@example.com"}
+        body1 = {"slot_id": "s1", "name": "Idem Tester", "email": "idem-test@example.com"}
         res1 = self.client.post("/bookings", headers=headers_with_idem, json=body1)
         self.assertEqual(res1.status_code, 201)
         data1 = res1.get_json()
@@ -174,17 +174,23 @@ class TestClinicApiLevels(unittest.TestCase):
         self.assertEqual(data1["id"], data2["id"])
 
         # Same key with different body -> 422
-        body2 = {"slot_id": "s2", "name": "Ada", "email": "ada@example.com"}
+        body2 = {"slot_id": "s2", "name": "Idem Tester", "email": "idem-test@example.com"}
         res3 = self.client.post("/bookings", headers=headers_with_idem, json=body2)
         self.assertEqual(res3.status_code, 422)
 
         # Cursor pagination:
-        # Book s2 for same email
+        # Book s2 for same email (no idempotency key)
         res_s2 = self.client.post("/bookings", headers=self.headers, json=body2)
         self.assertEqual(res_s2.status_code, 201)
 
-        # List bookings with limit=1
-        page1 = self.client.get("/bookings?email=ADA@EXAMPLE.COM&limit=1", headers=self.headers)
+        # First verify we have exactly 2 bookings total
+        all_page = self.client.get("/bookings?email=idem-test@example.com&limit=50", headers=self.headers)
+        self.assertEqual(all_page.status_code, 200)
+        all_data = all_page.get_json()
+        self.assertEqual(len(all_data["bookings"]), 2)
+
+        # List bookings with limit=1 (case-insensitive email)
+        page1 = self.client.get("/bookings?email=IDEM-TEST@EXAMPLE.COM&limit=1", headers=self.headers)
         self.assertEqual(page1.status_code, 200)
         p1_data = page1.get_json()
         self.assertEqual(len(p1_data["bookings"]), 1)
@@ -192,14 +198,14 @@ class TestClinicApiLevels(unittest.TestCase):
 
         # Page 2 using cursor
         cursor = p1_data["next_cursor"]
-        page2 = self.client.get(f"/bookings?email=ada@example.com&limit=1&cursor={cursor}", headers=self.headers)
+        page2 = self.client.get(f"/bookings?email=idem-test@example.com&limit=1&cursor={cursor}", headers=self.headers)
         self.assertEqual(page2.status_code, 200)
         p2_data = page2.get_json()
         self.assertEqual(len(p2_data["bookings"]), 1)
         self.assertIsNone(p2_data["next_cursor"])
 
         # Invalid limit -> 400
-        res_bad_limit = self.client.get("/bookings?email=ada@example.com&limit=0", headers=self.headers)
+        res_bad_limit = self.client.get("/bookings?email=idem-test@example.com&limit=0", headers=self.headers)
         self.assertEqual(res_bad_limit.status_code, 400)
 
     # --- LEVEL 5 TESTS ---
