@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex">
+  <title>Koya Clinic | Admin tools</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script>
+    (function () {
+      try {
+        var t = localStorage.getItem("clinic_theme");
+        if (!t && window.matchMedia("(prefers-color-scheme: dark)").matches) t = "dark";
+        if (t) document.documentElement.setAttribute("data-theme", t);
+      } catch (e) {}
+    })();
+  </script>
+</head>
+<body>
+<div class="admin-wrap">
+  <h1>Admin tools</h1>
+  <p class="lead">For testing the API. Not linked from the patient page.</p>
+
+  <div class="warn">Seeding slots wipes every booking, slot, idempotency key and rate limit counter. Don't use it on live data.</div>
+
+  <div class="card">
+    <div class="field">
+      <label for="key">API key</label>
+      <input id="key" type="text" autocomplete="off">
+    </div>
+    <div class="row">
+      <button class="btn small" id="saveKey" type="button">Save key</button>
+      <a class="btn small" href="/">Back to patient page</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:16px;margin-bottom:10px">Seed sample slots</h2>
+    <div class="row" style="margin-bottom:10px">
+      <label for="days" style="font-size:13px">Days ahead</label>
+      <input id="days" type="number" min="1" max="14" value="5" style="width:80px;height:38px;border:1px solid var(--line-strong);border-radius:8px;padding:0 10px;background:var(--surface)">
+      <button class="btn small danger" id="seed" type="button">Reset and seed</button>
+    </div>
+    <p class="fine">Creates half hour slots from 09:00 to 12:00 for Dr Ade and Dr Chioma on each of the next days (weekends included), plus one past slot to test the "already started" rule.</p>
+  </div>
+
+  <div class="card">
+    <h2 style="font-size:16px;margin-bottom:10px">Current slots</h2>
+    <button class="btn small" id="list" type="button">Load slots</button>
+    <pre class="out" id="out" hidden></pre>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var DEFAULT_KEY = "koya-clinic-api-key-2026-x9f3m7";
+    var $ = function (id) { return document.getElementById(id); };
+    function key() { try { return localStorage.getItem("clinic_api_key") || DEFAULT_KEY; } catch (e) { return DEFAULT_KEY; } }
+    $("key").value = key();
+
+    function show(text) { var o = $("out"); o.hidden = false; o.textContent = text; }
+
+    $("saveKey").addEventListener("click", function () {
+      try { localStorage.setItem("clinic_api_key", $("key").value.trim()); show("Key saved in this browser."); } catch (e) { show("Couldn't save the key."); }
+    });
+
+    $("list").addEventListener("click", function () {
+      fetch("/slots", { headers: { "X-API-Key": key() } }).then(function (r) { return r.json(); })
+        .then(function (d) { show(JSON.stringify(d, null, 2)); }).catch(function (e) { show(String(e)); });
+    });
+
+    $("seed").addEventListener("click", function () {
+      if (!confirm("This deletes all bookings and slots. Continue?")) return;
+      var days = Math.min(14, Math.max(1, parseInt($("days").value, 10) || 5));
+      var slots = [];
+      var now = new Date();
+      var past = new Date(now.getTime() - 3600 * 1000);
+      slots.push({ id: "s-past", provider: "Dr Past", start: past.toISOString(), end: new Date(past.getTime() + 1800000).toISOString() });
+      var n = 0;
+      for (var d = 1; d <= days; d++) {
+        ["Dr Ade", "Dr Chioma"].forEach(function (p, pi) {
+          for (var m = 0; m < 6; m++) {
+            var s = new Date(now);
+            s.setDate(now.getDate() + d);
+            s.setHours(9, 0, 0, 0);
+            s = new Date(s.getTime() + m * 1800000 + pi * 0);
+            slots.push({ id: "s" + (++n), provider: p, start: s.toISOString(), end: new Date(s.getTime() + 1800000).toISOString() });
+          }
+        });
+      }
+      fetch("/reset", { method: "POST", headers: { "X-API-Key": key(), "Content-Type": "application/json" }, body: JSON.stringify({ slots: slots }) })
+        .then(function (r) { return r.json().then(function (d) { show("HTTP " + r.status + "\n" + JSON.stringify(d) + "\nSeeded " + slots.length + " slots."); }); })
+        .catch(function (e) { show(String(e)); });
+    });
+  })();
+</script>
+</body>
+</html>
